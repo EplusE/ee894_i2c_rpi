@@ -33,7 +33,7 @@
 ### Example request and output
 
 ```shell
-pi@raspberrypi:~ $ python3 ee894_i2c_rpi.py
+pi@raspberrypi:~ $ python3 ee894_continous_mode.py
 	temperature, relative humidity, CO2 average, CO2 raw, pressure
 	23.41 °C, 50.64 %RH, 500 ppm, 500 ppm, 978.1 mbar 
 ```
