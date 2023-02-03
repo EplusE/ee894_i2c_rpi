@@ -2,22 +2,24 @@
 """
 Example script reading measurement values from the EE894 sensor via I2C interface.
 
-Copyright 2022 E+E Elektronik Ges.m.b.H.
+Copyright 2023 E+E Elektronik Ges.m.b.H.
 
 Disclaimer:
-This application example is non-binding and does not claim to be complete with regard
-to configuration and equipment as well as all eventualities. The application example
-is intended to provide assistance with the EE894 sensor module design-in and is provided "as is".
-You yourself are responsible for the proper operation of the products described.
-This application example does not release you from the obligation to handle the product safely
-during application, installation, operation and maintenance. By using this application example,
-you acknowledge that we cannot be held liable for any damage beyond the liability regulations
-described.
+This application example is non-binding and does not claim to be complete with
+regard to configuration and equipment as well as all eventualities. The
+application example is intended to provide assistance with the EE894 sensor
+module design-in and is provided "as is".You yourself are responsible for the
+proper operation of the products described. This application example does not
+release you from the obligation to handle the product safely during
+application, installation, operation and maintenance. By using this application
+example, you acknowledge that we cannot be held liable for any damage beyond
+the liability regulations described.
 
-We reserve the right to make changes to this application example at any time without notice.
-In case of discrepancies between the suggestions in this application example and other E+E
-publications, such as catalogues, the content of the other documentation takes precedence.
-We assume no liability for the information contained in this document.
+We reserve the right to make changes to this application example at any time
+without notice. In case of discrepancies between the suggestions in this
+application example and other E+E publications, such as catalogues, the content
+of the other documentation takes precedence. We assume no liability for
+the information contained in this document.
 """
 
 # pylint: disable=E0401
@@ -26,6 +28,20 @@ import numpy as np
 # pylint: enable=E0401
 CRC8_ONEWIRE_POLY = 0x31
 CRC8_ONEWIRE_START = 0xFF
+EE894_COMMAND_A = 0xE000
+EE894_COMMAND_B = 0xE027
+EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS = 0x7154
+EE894_MEM_ADDRESS_MEASUREMENT_INTERVALL = 0x00
+EE894_MEM_ADDRESS_CAM_FOR_HUMIDITY = 0x01
+EE894_MEM_ADDRESS_CAM_FOR_TEMPERATURE = 0x02
+EE894_MEM_ADDRESS_CAM_FOR_PRESSURE = 0x03
+EE894_MEM_ADDRESS_CAM_FOR_CO2 = 0x04
+EE894_MEM_ADDRESS_CAM_DATE_FOR_HUMIDITY = 0x05
+EE894_MEM_ADDRESS_CAM_DATE_FOR_TEMPERATURE = 0x06
+EE894_MEM_ADDRESS_CAM_DATE_FOR_PRESSURE = 0x07
+EE894_MEM_ADDRESS_CAM_DATE_FOR_CO2 = 0x08
+EE894_MEM_ADDRESS_GLOBAL_DATE = 0x09
+EE894_MEM_ADDRESS_DEVICE_NAME = 0x0A
 
 
 def get_status_string(status_code):
@@ -43,6 +59,7 @@ def get_status_string(status_code):
         return status_string[status_code]
     return "unknown error"
 
+
 def calc_crc8(buf, start, end):
     ''' calculate crc8 checksum  '''
     crc_val = CRC8_ONEWIRE_START
@@ -58,10 +75,9 @@ def calc_crc8(buf, start, end):
     return crc_val
 
 
-
 class EE894():
     """Implements communication with EE894 over i2c with a specific address."""
-    
+
     def __init__(self):
         self.i2c_address = 0x33
 
@@ -73,8 +89,10 @@ class EE894():
 
     def get_temp_hum(self):
         """get temperature and humidity"""
-        i2c_response = self.wire_write_read([0xE0, 0x00], 6)
-        if ((calc_crc8(i2c_response, 0, 2) != i2c_response[2]) | (calc_crc8(i2c_response, 3, 5) != i2c_response[5])):          
+        i2c_response = self.wire_write_read(
+            [(EE894_COMMAND_A >> 8), (EE894_COMMAND_A & 0xFF)], 6)
+        if ((calc_crc8(i2c_response, 0, 2) != i2c_response[2]) |
+            (calc_crc8(i2c_response, 3, 5) != i2c_response[5])):
             raise Warning(get_status_string(2))
         else:
             temperature = ((i2c_response[0] << 8) + i2c_response[1]) / 100 - 273.15
@@ -83,8 +101,11 @@ class EE894():
 
     def get_co2aver_co2raw_pressure(self):
         """get co2 average co2 raw and pressure"""
-        i2c_response = self.wire_write_read([0xE0, 0x27], 9)
-        if ((calc_crc8(i2c_response, 0, 2) != i2c_response[2]) | (calc_crc8(i2c_response, 3, 5) != i2c_response[5]) | (calc_crc8(i2c_response, 6, 8) != i2c_response[8])):
+        i2c_response = self.wire_write_read(
+            [(EE894_COMMAND_B >> 8), (EE894_COMMAND_B & 0xFF)], 9)
+        if ((calc_crc8(i2c_response, 0, 2) != i2c_response[2]) |
+            (calc_crc8(i2c_response, 3, 5) != i2c_response[5]) |
+            (calc_crc8(i2c_response, 6, 8) != i2c_response[8])):
             raise Warning(get_status_string(2))
         else:
             co2avg = round((i2c_response[0] << 8) + i2c_response[1])
@@ -94,67 +115,111 @@ class EE894():
 
     def read_sensorname(self):
         """get the Sensor name"""
-        i2c_response = self.wire_write_read([0x71, 0x54, 0x0A], 16)
+        i2c_response = self.wire_write_read(
+            [(EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS >> 8),
+             (EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS & 0xFF),
+             EE894_MEM_ADDRESS_DEVICE_NAME], 16)
         return i2c_response
 
     def change_sensorname(self, buf):
         """change the Sensor name"""
-        if (16 == len(buf)):
-            Command = [0x71, 0x54, 0x0A]
+        if len(buf) == 16:
+            command = [(EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS >> 8),
+                       (EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS & 0xFF),
+                       EE894_MEM_ADDRESS_DEVICE_NAME]
             for x in range(16):
-                Command.append(ord(buf[x]))
-            Command.append(calc_crc8(Command, 2, 19))
-            self.wire_write(Command)
+                command.append(ord(buf[x]))
+            command.append(calc_crc8(command, 2, 19))
+            self.wire_write(command)
         else:
             raise Warning(get_status_string(3))
 
-    def read_CAM_date(self, measured_variable): # measured_variable: 0 => relative humidity, 1 => temperature, 2 => pressure, 3 => CO2, 4 => global date 
+    def read_CAM_date(self, measured_variable):  # measured_variable: 0 => relative humidity, 1 => temperature, 2 => pressure, 3 => CO2, 4 => global date
         """get CAM(Custom Adjustment mode) Date"""
-        Command = [0x71, 0x54, 0x00]
-        Command[2] = measured_variable + 5
-        i2c_response = self.wire_write_read(Command, 3)
+        command = [(EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS >> 8),
+                   (EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS & 0xFF), 0x00]
+        if measured_variable == 0:
+            command[2] = EE894_MEM_ADDRESS_CAM_DATE_FOR_HUMIDITY
+        elif measured_variable == 1:
+            command[2] = EE894_MEM_ADDRESS_CAM_DATE_FOR_TEMPERATURE
+        elif measured_variable == 2:
+            command[2] = EE894_MEM_ADDRESS_CAM_DATE_FOR_PRESSURE
+        elif measured_variable == 3:
+            command[2] = EE894_MEM_ADDRESS_CAM_DATE_FOR_CO2
+        else:
+            command[2] = EE894_MEM_ADDRESS_GLOBAL_DATE
+        i2c_response = self.wire_write_read(command, 3)
         return i2c_response[0], i2c_response[1], i2c_response[2]
 
-    def change_CAM_date(self, measured_variable, day, month, year): # measured_variable: 0 => relative humidity, 1 => temperature, 2 => pressure, 3 => CO2, 4 => global date 
+    def change_CAM_date(self, measured_variable, day, month, year):  # measured_variable: 0 => relative humidity, 1 => temperature, 2 => pressure, 3 => CO2, 4 => global date
         """change CAM(Custom Adjustment mode) Date"""
-        if((day < 32 and day > 0) and (month < 13 and month > 0) and (year < 100 and year >= 0)):
-            Command = [0x71, 0x54, 0x00]
-            Command[2] = measured_variable + 5
-            Command.append(day)
-            Command.append(month)
-            Command.append(year)
-            Command.append(calc_crc8(Command, 2, 6))
-            self.wire_write(Command)
+        if((0 < day < 32) & (0 < month < 13) &
+           (0 <= year < 100)):
+            command = [(EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS >> 8),
+                       (EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS and 0xFF), 0x00]
+            if measured_variable == 0:
+                command[2] = EE894_MEM_ADDRESS_CAM_DATE_FOR_HUMIDITY
+            elif measured_variable == 1:
+                command[2] = EE894_MEM_ADDRESS_CAM_DATE_FOR_TEMPERATURE
+            elif measured_variable == 2:
+                command[2] = EE894_MEM_ADDRESS_CAM_DATE_FOR_PRESSURE
+            elif measured_variable == 3:
+                command[2] = EE894_MEM_ADDRESS_CAM_DATE_FOR_CO2
+            else:
+                command[2] = EE894_MEM_ADDRESS_GLOBAL_DATE
+            command.append(day)
+            command.append(month)
+            command.append(year)
+            command.append(calc_crc8(command, 2, 6))
+            self.wire_write(command)
         else:
             raise Warning(get_status_string(4))
 
-    def read_CAM(self, measured_variable): # 0 => relative humidity, 1 => temperature, 2 => pressure, 3 => CO2
+    def read_CAM(self, measured_variable):  # 0 => relative humidity, 1 => temperature, 2 => pressure, 3 => CO2
         """get CAM(Custom Adjustment mode) Data"""
-        Command = [0x71, 0x54, 0x00]
-        Command[2] = measured_variable + 1
-        i2c_response = self.wire_write_read(Command, 8)
+        command = [(EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS >> 8),
+                   (EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS & 0xFF), 0x00]
+        if measured_variable == 0:
+            command[2] = EE894_MEM_ADDRESS_CAM_FOR_HUMIDITY
+        elif measured_variable == 1:
+            command[2] = EE894_MEM_ADDRESS_CAM_FOR_TEMPERATURE
+        elif measured_variable == 2:
+            command[2] = EE894_MEM_ADDRESS_CAM_FOR_PRESSURE
+        else:
+            command[2] = EE894_MEM_ADDRESS_CAM_FOR_CO2
+        i2c_response = self.wire_write_read(command, 8)
         offset = np.int16((i2c_response[0] << 8) + i2c_response[1])
         gain = (i2c_response[2] << 8) + i2c_response[3]
         lower_limit = (i2c_response[4] << 8) + i2c_response[5]
         upper_limit = (i2c_response[6] << 8) + i2c_response[7]
         return offset, gain, lower_limit, upper_limit
-    
-    def change_CAM(self, measured_variable, offset, gain, lower_limit, upper_limit): #0 => relative humidity, 1 => temperature, 2 => pressure, 3 => CO2
+
+    def change_CAM(self, measured_variable, offset, gain, lower_limit, upper_limit):  # 0 => relative humidity, 1 => temperature, 2 => pressure, 3 => CO2
         """change CAM(Custom Adjustment mode) Data"""
-        if((gain < 65536 and gain >= 0) and (lower_limit < 65536 and lower_limit >= 0) and (upper_limit < 65536 and upper_limit >= 0)):
-            Command = [0x71, 0x54, 0x00]
-            Command[2] = measured_variable + 1
+        if((0 <= gain < 65536) and
+           (0 <= lower_limit < 65536) and
+           (0 <= upper_limit < 65536)):
+            command = [(EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS >> 8),
+                       (EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS & 0xFF), 0x00]
+            if measured_variable == 0:
+                command[2] = EE894_MEM_ADDRESS_CAM_FOR_HUMIDITY
+            elif measured_variable == 1:
+                command[2] = EE894_MEM_ADDRESS_CAM_FOR_TEMPERATURE
+            elif measured_variable == 2:
+                command[2] = EE894_MEM_ADDRESS_CAM_FOR_PRESSURE
+            else:
+                command[2] = EE894_MEM_ADDRESS_CAM_FOR_CO2
             buf = np.uint16(offset)
-            Command.append(buf >> 8)
-            Command.append(buf & 0xFF)
-            Command.append(gain >> 8)
-            Command.append(gain & 0xFF)
-            Command.append(lower_limit >> 8)
-            Command.append(lower_limit & 0xFF)
-            Command.append(upper_limit >> 8)
-            Command.append(upper_limit & 0xFF)
-            Command.append(calc_crc8(Command, 2, 11))
-            self.wire_write(Command)
+            command.append(buf >> 8)
+            command.append(buf & 0xFF)
+            command.append(gain >> 8)
+            command.append(gain & 0xFF)
+            command.append(lower_limit >> 8)
+            command.append(lower_limit & 0xFF)
+            command.append(upper_limit >> 8)
+            command.append(upper_limit & 0xFF)
+            command.append(calc_crc8(command, 2, 11))
+            self.wire_write(command)
         else:
             raise Warning(get_status_string(5))
 
@@ -162,7 +227,7 @@ class EE894():
         """change in CAM(Custom Adjustment mode) offset"""
         old_offset, gain, lower_limit, upper_limit = self.read_CAM(measured_variable)
         self.change_CAM(measured_variable, offset, gain, lower_limit, upper_limit)
-        
+
     def change_gain_in_CAM(self, measured_variable, gain):
         """change in CAM(Custom Adjustment mode) gain"""
         offset, old_gain, lower_limit, upper_limit = self.read_CAM(measured_variable)
@@ -180,20 +245,23 @@ class EE894():
 
     def read_co2_measuring_interval(self):
         ''' reads time interval between measurments '''
-        i2c_response = self.wire_write_read([0x71, 0x54, 0x00], 3)
+        i2c_response = self.wire_write_read(
+            [(EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS >> 8),
+             (EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS & 0xFF),
+             EE894_MEM_ADDRESS_MEASUREMENT_INTERVALL], 3)
         sec = round((i2c_response[0] << 8) + i2c_response[1]) / 10
         return sec
 
-
     def change_co2_measuring_interval(self, measuring_interval):
         ''' change time between measurments '''
-        sendByte0 = np.uint8(measuring_interval / 256)
-        sendByte1 = np.uint8(measuring_interval % 256)
-        Command = [0x71, 0x54, 0x00, sendByte0, sendByte1, 0x00]
-        Command[5] = calc_crc8(Command, 2, 5)
-        self.wire_write(Command)
-
-
+        send_byte0 = np.uint8(measuring_interval / 256)
+        send_byte1 = np.uint8(measuring_interval % 256)
+        command = [(EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS >> 8),
+                   (EE894_COMMAND_FOR_CUSTOMER_MEMORY_ACCESS & 0xFF),
+                   EE894_MEM_ADDRESS_MEASUREMENT_INTERVALL,
+                   send_byte0, send_byte1, 0x00]
+        command[5] = calc_crc8(command, 2, 5)
+        self.wire_write(command)
 
     def wire_write_read(self,  buf, receiving_bytes):
         """write a command to the sensor to get different answers like temperature values,..."""
